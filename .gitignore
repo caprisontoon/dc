@@ -1,0 +1,23 @@
+# 환경변수 / API 키
+.env
+
+# 데이터베이스와 출력물
+data/
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.python-version
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

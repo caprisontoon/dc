@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>투네이션 모니터 — 디시인사이드</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+                   "Noto Sans KR", sans-serif;
+      margin: 0; padding: 24px; background: #f5f6f8; color: #1a1a1a;
+    }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .meta { color: #666; font-size: 13px; margin-bottom: 20px; }
+    .metrics { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .card {
+      background: white; border-radius: 10px; padding: 14px 18px;
+      min-width: 120px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .card .label { font-size: 12px; color: #888; }
+    .card .value { font-size: 22px; font-weight: 700; margin-top: 2px; }
+    .filters {
+      background: white; padding: 14px; border-radius: 10px; margin-bottom: 16px;
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .filters label { font-size: 13px; color: #555; }
+    .filters select, .filters input {
+      padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px;
+      font-size: 13px; background: white;
+    }
+    .posts { display: flex; flex-direction: column; gap: 10px; }
+    .post {
+      background: white; border-radius: 10px; padding: 14px 18px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .post.hidden-row { display: none; }
+    .post.irrelevant { opacity: 0.55; }
+    .post-head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: 12px; margin-bottom: 6px;
+    }
+    .post a.title {
+      color: #1a1a1a; text-decoration: none; font-weight: 600; font-size: 15px;
+    }
+    .post a.title:hover { text-decoration: underline; }
+    .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge.gallery { background: #eef; color: #335; }
+    .badge.kw { background: #fef3c7; color: #92400e; }
+    .badge.tag { background: #e0f2fe; color: #075985; }
+    .sent-긍정 { background: #d1fae5; color: #065f46; }
+    .sent-중립 { background: #e5e7eb; color: #374151; }
+    .sent-부정 { background: #fee2e2; color: #991b1b; }
+    .post-meta { color: #666; font-size: 12px; }
+    .summary { font-size: 13px; color: #444; margin: 4px 0; }
+    .stats { font-size: 12px; color: #888; }
+    .empty { text-align: center; color: #888; padding: 40px; }
+  </style>
+</head>
+<body>
+  <h1>투네이션 디시 모니터링</h1>
+  <div class="meta">
+    생성: {{ generated_at }} · 총 {{ posts|length }}개 글 (관련: {{ relevant_count }}개)
+  </div>
+
+  <div class="metrics">
+    <div class="card"><div class="label">전체</div><div class="value">{{ posts|length }}</div></div>
+    <div class="card"><div class="label">관련 글</div><div class="value">{{ relevant_count }}</div></div>
+    <div class="card"><div class="label">긍정</div><div class="value">{{ sentiment_counts['긍정'] }}</div></div>
+    <div class="card"><div class="label">중립</div><div class="value">{{ sentiment_counts['중립'] }}</div></div>
+    <div class="card"><div class="label">부정</div><div class="value">{{ sentiment_counts['부정'] }}</div></div>
+  </div>
+
+  <div class="filters">
+    <label>갤러리
+      <select id="f-gallery">
+        <option value="">전체</option>
+        {% for g in galleries %}
+        <option value="{{ g.id }}">{{ g.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>감정
+      <select id="f-sentiment">
+        <option value="">전체</option>
+        <option value="긍정">긍정</option>
+        <option value="중립">중립</option>
+        <option value="부정">부정</option>
+      </select>
+    </label>
+    <label>관련성
+      <select id="f-relevant">
+        <option value="relevant">관련 글만</option>
+        <option value="">전체 (오탐 포함)</option>
+      </select>
+    </label>
+    <label>정렬
+      <select id="f-sort">
+        <option value="posted_desc">최신순</option>
+        <option value="recommend_desc">추천수순</option>
+        <option value="comment_desc">댓글수순</option>
+      </select>
+    </label>
+    <label>검색 <input id="f-q" type="text" placeholder="제목/요약 검색"></label>
+  </div>
+
+  <div class="posts" id="posts">
+    {% for p in posts %}
+    <div class="post {% if not p.is_relevant %}irrelevant{% endif %}"
+         data-gallery="{{ p.gallery_id }}"
+         data-sentiment="{{ p.sentiment or '중립' }}"
+         data-relevant="{{ '1' if p.is_relevant else '0' }}"
+         data-posted="{{ p.posted_at or '' }}"
+         data-recommend="{{ p.recommend_count or 0 }}"
+         data-comments="{{ p.comment_count or 0 }}"
+         data-text="{{ (p.title or '') ~ ' ' ~ (p.summary or '') }}">
+      <div class="post-head">
+        <a class="title" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title }}</a>
+        <div class="badges">
+          <span class="badge gallery">{{ p.gallery_name }}</span>
+          {% if p.matched_keyword %}<span class="badge kw">{{ p.matched_keyword }}</span>{% endif %}
+          {% if p.sentiment %}<span class="badge sent-{{ p.sentiment }}">{{ p.sentiment }}</span>{% endif %}
+          {% for tag in p.topic_tags %}<span class="badge tag">{{ tag }}</span>{% endfor %}
+        </div>
+      </div>
+      {% if p.summary %}<div class="summary">{{ p.summary }}</div>{% endif %}
+      <div class="post-meta">
+        {{ p.author or '익명' }} · {{ p.posted_at or '' }}
+      </div>
+      <div class="stats">
+        조회 {{ p.view_count or 0 }} · 추천 {{ p.recommend_count or 0 }} · 댓글 {{ p.comment_count or 0 }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div id="empty" class="empty" style="display:none">표시할 글이 없어요. 필터를 바꿔보세요.</div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const posts = Array.from(document.querySelectorAll('.post'));
+    const fields = ['f-gallery', 'f-sentiment', 'f-relevant', 'f-sort', 'f-q'];
+
+    function apply() {
+      const gallery = $('f-gallery').value;
+      const sentiment = $('f-sentiment').value;
+      const relevant = $('f-relevant').value;
+      const sort = $('f-sort').value;
+      const q = $('f-q').value.trim().toLowerCase();
+
+      const filtered = posts.filter((el) => {
+        if (gallery && el.dataset.gallery !== gallery) return false;
+        if (sentiment && el.dataset.sentiment !== sentiment) return false;
+        if (relevant === 'relevant' && el.dataset.relevant !== '1') return false;
+        if (q && !el.dataset.text.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      const sorters = {
+        posted_desc: (a, b) => (b.dataset.posted || '').localeCompare(a.dataset.posted || ''),
+        recommend_desc: (a, b) => Number(b.dataset.recommend) - Number(a.dataset.recommend),
+        comment_desc: (a, b) => Number(b.dataset.comments) - Number(a.dataset.comments),
+      };
+      filtered.sort(sorters[sort]);
+
+      const container = $('posts');
+      posts.forEach((el) => el.classList.add('hidden-row'));
+      filtered.forEach((el) => {
+        el.classList.remove('hidden-row');
+        container.appendChild(el);
+      });
+      $('empty').style.display = filtered.length ? 'none' : 'block';
+    }
+
+    fields.forEach((id) => {
+      const el = $(id);
+      el.addEventListener('input', apply);
+      el.addEventListener('change', apply);
+    });
+    apply();
+  </script>
+</body>
+</html>
