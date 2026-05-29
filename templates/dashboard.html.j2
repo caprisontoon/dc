@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>투네이션 디시 모니터링</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --accent: #6c63ff;
+    --pos: #4caf50;
+    --neg: #f44336;
+    --neu: #9e9e9e;
+    --text: #e0e0e0;
+    --muted: #888;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .gen-time { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+  .stats { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 20px; min-width: 120px; }
+  .stat-card .label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .stat-card .value { font-size: 24px; font-weight: 700; }
+  .stat-card.pos .value { color: var(--pos); }
+  .stat-card.neg .value { color: var(--neg); }
+  .stat-card.neu .value { color: var(--neu); }
+
+  .controls { padding: 0 24px 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .controls select, .controls input {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 13px;
+  }
+  .controls label { color: var(--muted); font-size: 12px; }
+
+  .posts { padding: 0 24px 40px; display: flex; flex-direction: column; gap: 10px; }
+  .post-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; transition: border-color .15s;
+  }
+  .post-card:hover { border-color: var(--accent); }
+  .post-card .top { display: flex; align-items: flex-start; gap: 10px; }
+  .post-card .badge-gallery {
+    font-size: 11px; padding: 2px 8px; border-radius: 12px;
+    background: #2a2d3a; white-space: nowrap; flex-shrink: 0;
+  }
+  .post-card .title a { color: var(--text); text-decoration: none; font-weight: 600; font-size: 15px; }
+  .post-card .title a:hover { color: var(--accent); }
+  .post-card .meta { margin-top: 6px; color: var(--muted); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+  .post-card .summary { margin-top: 8px; font-size: 13px; color: #bbb; }
+  .post-card .tags { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 12px; background: #2a2d3a; color: #aaa; }
+  .badge-sentiment {
+    font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .badge-sentiment.긍정 { background: rgba(76,175,80,.15); color: var(--pos); }
+  .badge-sentiment.부정 { background: rgba(244,67,54,.15); color: var(--neg); }
+  .badge-sentiment.중립 { background: rgba(158,158,158,.15); color: var(--neu); }
+  .badge-sentiment.unclassified { background: #2a2d3a; color: var(--muted); }
+  .no-results { text-align: center; color: var(--muted); padding: 60px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📡 투네이션 디시 모니터링</h1>
+  <span class="gen-time">생성: {{ generated_at }}</span>
+</header>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="label">전체 수집</div>
+    <div class="value">{{ stats.total_collected }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">관련 글</div>
+    <div class="value">{{ stats.total_relevant }}</div>
+  </div>
+  <div class="stat-card pos">
+    <div class="label">긍정</div>
+    <div class="value">{{ stats.sentiments.get('긍정', 0) }}</div>
+  </div>
+  <div class="stat-card neu">
+    <div class="label">중립</div>
+    <div class="value">{{ stats.sentiments.get('중립', 0) }}</div>
+  </div>
+  <div class="stat-card neg">
+    <div class="label">부정</div>
+    <div class="value">{{ stats.sentiments.get('부정', 0) }}</div>
+  </div>
+</div>
+
+<div class="controls">
+  <div>
+    <label>갤러리</label><br>
+    <select id="filter-gallery">
+      <option value="">전체</option>
+      {% for g in galleries %}
+      <option value="{{ g.id }}">{{ g.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label>감정</label><br>
+    <select id="filter-sentiment">
+      <option value="">전체</option>
+      <option value="긍정">긍정</option>
+      <option value="중립">중립</option>
+      <option value="부정">부정</option>
+    </select>
+  </div>
+  <div>
+    <label>정렬</label><br>
+    <select id="sort-by">
+      <option value="date">최신순</option>
+      <option value="recommend">추천순</option>
+      <option value="comments">댓글순</option>
+      <option value="views">조회순</option>
+    </select>
+  </div>
+  <div>
+    <label>검색</label><br>
+    <input type="text" id="search-text" placeholder="제목/요약 검색..." style="width:200px">
+  </div>
+</div>
+
+<div class="posts" id="post-list">
+  {% for p in posts %}
+  <div class="post-card"
+       data-gallery="{{ p.gallery_id }}"
+       data-sentiment="{{ p.sentiment or 'unclassified' }}"
+       data-date="{{ p.posted_at or '' }}"
+       data-recommend="{{ p.recommend_count or 0 }}"
+       data-comments="{{ p.comment_count or 0 }}"
+       data-views="{{ p.view_count or 0 }}"
+       data-text="{{ (p.title or '') + ' ' + (p.summary or '') }}">
+    <div class="top">
+      <span class="badge-gallery">{{ galleries_map.get(p.gallery_id, p.gallery_id) }}</span>
+      <div style="flex:1">
+        <div class="title"><a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title }}</a></div>
+        <div class="meta">
+          <span>👤 {{ p.author }}</span>
+          <span>📅 {{ p.posted_at }}</span>
+          <span>👁 {{ p.view_count }}</span>
+          <span>👍 {{ p.recommend_count }}</span>
+          <span>💬 {{ p.comment_count }}</span>
+          <span style="color:#666">🔑 {{ p.matched_keyword }}</span>
+        </div>
+      </div>
+      <span class="badge-sentiment {{ p.sentiment or 'unclassified' }}">
+        {{ p.sentiment or '미분류' }}
+      </span>
+    </div>
+    {% if p.summary %}
+    <div class="summary">{{ p.summary }}</div>
+    {% endif %}
+    {% if p.topic_tags %}
+    <div class="tags">
+      {% for tag in p.topic_tags_list %}
+      <span class="tag"># {{ tag }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+<div class="no-results" id="no-results" style="display:none">조건에 맞는 글이 없습니다.</div>
+
+<script>
+const cards = Array.from(document.querySelectorAll('.post-card'));
+
+function applyFilters() {
+  const gallery = document.getElementById('filter-gallery').value;
+  const sentiment = document.getElementById('filter-sentiment').value;
+  const sortBy = document.getElementById('sort-by').value;
+  const search = document.getElementById('search-text').value.toLowerCase();
+
+  let visible = cards.filter(c => {
+    if (gallery && c.dataset.gallery !== gallery) return false;
+    if (sentiment && c.dataset.sentiment !== sentiment) return false;
+    if (search && !c.dataset.text.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const dir = { date: -1, recommend: -1, comments: -1, views: -1 };
+  visible.sort((a, b) => {
+    if (sortBy === 'date') return a.dataset.date < b.dataset.date ? 1 : -1;
+    if (sortBy === 'recommend') return (b.dataset.recommend - a.dataset.recommend);
+    if (sortBy === 'comments') return (b.dataset.comments - a.dataset.comments);
+    if (sortBy === 'views') return (b.dataset.views - a.dataset.views);
+    return 0;
+  });
+
+  const list = document.getElementById('post-list');
+  cards.forEach(c => c.style.display = 'none');
+  visible.forEach(c => { c.style.display = ''; list.appendChild(c); });
+  document.getElementById('no-results').style.display = visible.length ? 'none' : 'block';
+}
+
+['filter-gallery','filter-sentiment','sort-by'].forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFilters));
+document.getElementById('search-text').addEventListener('input', applyFilters);
+</script>
+</body>
+</html>
