@@ -15,8 +15,19 @@ from config import HEADERS, REQUEST_DELAY
 
 logger = logging.getLogger(__name__)
 
-COMMENT_API = "https://gall.dcinside.com/board/comment/"
-COMMENT_API_MINOR = "https://gall.dcinside.com/mgallery/board/comment/"
+COMMENT_API = {
+    "board": "https://gall.dcinside.com/board/comment/",
+    "mgallery": "https://gall.dcinside.com/mgallery/board/comment/",
+    "mini": "https://gall.dcinside.com/mini/board/comment/",
+}
+
+
+def _board_type_from_url(url: str) -> str:
+    if "/mgallery/" in url:
+        return "mgallery"
+    if "/mini/" in url:
+        return "mini"
+    return "board"
 
 
 def _fetch_body(session: requests.Session, url: str) -> dict:
@@ -86,11 +97,11 @@ def _fetch_comments(
     session: requests.Session,
     gall_id: str,
     post_no: int,
-    is_minor: bool,
+    board_type: str,
     e_s_n_o: str,
 ) -> list[dict]:
     """댓글 AJAX API 호출."""
-    api_url = COMMENT_API_MINOR if is_minor else COMMENT_API
+    api_url = COMMENT_API.get(board_type, COMMENT_API["board"])
     headers = {
         **HEADERS,
         "X-Requested-With": "XMLHttpRequest",
@@ -147,7 +158,7 @@ def fetch_post(post_info: dict, session: requests.Session) -> dict | None:
     """글 1개 전체 수집 후 DB 저장. 실패 시 None 반환."""
     pid = post_info["id"]
     url = post_info["url"]
-    is_minor = "/mgallery/" in url
+    board_type = _board_type_from_url(url)
 
     try:
         body_data = _fetch_body(session, url)
@@ -174,7 +185,7 @@ def fetch_post(post_info: dict, session: requests.Session) -> dict | None:
     post_no = body_data["_post_no"] or post_info["post_no"]
 
     time.sleep(REQUEST_DELAY)
-    comments = _fetch_comments(session, gall_id, post_no, is_minor, e_s_n_o)
+    comments = _fetch_comments(session, gall_id, post_no, board_type, e_s_n_o)
     db.save_comments(pid, comments)
     logger.info(f"저장 완료 [{pid}] 댓글 {len(comments)}개")
 

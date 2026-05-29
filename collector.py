@@ -15,15 +15,24 @@ from config import GALLERIES, KEYWORDS, KEYWORD_PATTERNS, HEADERS, SEARCH_PAGES,
 logger = logging.getLogger(__name__)
 
 
-def _search_url(gallery_id: str, is_minor: bool, keyword: str, page: int = 1) -> str:
-    board = "mgallery" if is_minor else "board"
+def _board_path(board_type: str) -> str:
+    """갤러리 종류 → URL 경로. board=일반, mgallery=마이너, mini=미니"""
+    if board_type == "mgallery":
+        return "mgallery/board"
+    if board_type == "mini":
+        return "mini/board"
+    return "board"
+
+
+def _search_url(gallery_id: str, board_type: str, keyword: str, page: int = 1) -> str:
+    path = _board_path(board_type)
     params = {
         "id": gallery_id,
         "s_type": "search_subject_memo",
         "s_keyword": keyword,
         "page": page,
     }
-    return f"https://gall.dcinside.com/{board}/lists/?{urlencode(params, encoding='utf-8')}"
+    return f"https://gall.dcinside.com/{path}/lists/?{urlencode(params, encoding='utf-8')}"
 
 
 def _parse_post_list(html: str, gallery_id: str) -> list[dict]:
@@ -116,12 +125,12 @@ def _keyword_match(text: str) -> str | None:
 def collect_gallery(gallery: dict, session: requests.Session) -> list[dict]:
     """갤러리 1곳에서 모든 키워드 검색 후 신규 글 목록 반환."""
     gid = gallery["id"]
-    is_minor = gallery["is_minor"]
+    board_type = gallery.get("board_type", "board")
     found: dict[str, dict] = {}  # post_id → post_info (중복 제거)
 
     for keyword in KEYWORDS:
         for page in range(1, SEARCH_PAGES + 1):
-            url = _search_url(gid, is_minor, keyword, page)
+            url = _search_url(gid, board_type, keyword, page)
             try:
                 resp = session.get(url, headers=HEADERS, timeout=15)
                 resp.raise_for_status()

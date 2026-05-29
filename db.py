@@ -197,23 +197,23 @@ def init_db():
 
 
 def _seed_galleries(conn):
+    path_map = {"mgallery": "mgallery/board", "mini": "mini/board", "board": "board"}
     for g in GALLERIES:
-        base_url = (
-            f"https://gall.dcinside.com/mgallery/board/lists/?id={g['id']}"
-            if g["is_minor"]
-            else f"https://gall.dcinside.com/board/lists/?id={g['id']}"
-        )
+        board_type = g.get("board_type", "board")
+        path = path_map.get(board_type, "board")
+        base_url = f"https://gall.dcinside.com/{path}/lists/?id={g['id']}"
+        is_minor = 1 if board_type in ("mgallery", "mini") else 0
         if _USE_PG:
             _execute(
                 conn,
                 "INSERT INTO galleries (id, name, base_url, is_minor) VALUES (?,?,?,?) ON CONFLICT DO NOTHING",
-                (g["id"], g["name"], base_url, int(g["is_minor"])),
+                (g["id"], g["name"], base_url, is_minor),
             )
         else:
             _execute(
                 conn,
                 "INSERT OR IGNORE INTO galleries (id, name, base_url, is_minor) VALUES (?,?,?,?)",
-                (g["id"], g["name"], base_url, int(g["is_minor"])),
+                (g["id"], g["name"], base_url, is_minor),
             )
 
 
