@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>투네이션 디시 모니터링</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Malgun Gothic', sans-serif; background: #f0f2f5; color: #222; }
+  header { background: #1a1a2e; color: #fff; padding: 18px 24px; }
+  header h1 { font-size: 1.3rem; }
+  header small { opacity: .6; font-size: .8rem; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px 16px; }
+
+  /* 요약 카드 */
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .stat-card { background: #fff; border-radius: 10px; padding: 14px 20px; flex: 1; min-width: 130px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .stat-card .label { font-size: .75rem; color: #666; margin-bottom: 4px; }
+  .stat-card .value { font-size: 1.6rem; font-weight: 700; }
+  .stat-card.pos .value { color: #2e7d32; }
+  .stat-card.neg .value { color: #c62828; }
+
+  /* 갤러리별 요약 */
+  .gallery-stats { background: #fff; border-radius: 10px; padding: 16px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; }
+  .gallery-stats h2 { font-size: .9rem; margin-bottom: 10px; color: #444; }
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee; }
+  th { color: #555; font-weight: 600; background: #fafafa; }
+
+  /* 필터 바 */
+  .filters { background: #fff; border-radius: 10px; padding: 14px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px;
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .filters label { font-size: .8rem; color: #555; }
+  .filters select, .filters input { padding: 6px 10px; border: 1px solid #ddd;
+    border-radius: 6px; font-size: .85rem; }
+  .filters input { flex: 1; min-width: 160px; }
+  .filter-count { margin-left: auto; font-size: .8rem; color: #888; }
+
+  /* 글 카드 */
+  #post-list { display: flex; flex-direction: column; gap: 10px; }
+  .post-card { background: #fff; border-radius: 10px; padding: 14px 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); cursor: pointer;
+    transition: box-shadow .15s; }
+  .post-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,.13); }
+  .post-card.hidden { display: none; }
+  .post-card.irrelevant { opacity: .45; }
+
+  .card-top { display: flex; align-items: flex-start; gap: 10px; }
+  .sentiment-badge { font-size: .7rem; font-weight: 700; padding: 2px 8px;
+    border-radius: 20px; white-space: nowrap; margin-top: 2px; }
+  .sentiment-badge.긍정 { background: #e8f5e9; color: #2e7d32; }
+  .sentiment-badge.중립 { background: #eeeeee; color: #555; }
+  .sentiment-badge.부정 { background: #ffebee; color: #c62828; }
+  .sentiment-badge.unknown { background: #f3e5f5; color: #6a1b9a; }
+
+  .post-title { font-size: .95rem; font-weight: 600; flex: 1; line-height: 1.4; }
+  .post-title a { color: inherit; text-decoration: none; }
+  .post-title a:hover { text-decoration: underline; }
+
+  .card-meta { font-size: .75rem; color: #888; margin-top: 6px;
+    display: flex; flex-wrap: wrap; gap: 8px; }
+  .card-meta span { display: flex; align-items: center; gap: 3px; }
+
+  .post-summary { font-size: .82rem; color: #444; margin-top: 8px;
+    padding-top: 8px; border-top: 1px solid #f0f0f0; }
+
+  .tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag { font-size: .7rem; background: #e3f2fd; color: #1565c0;
+    padding: 2px 7px; border-radius: 10px; }
+
+  .no-posts { text-align: center; padding: 60px; color: #aaa; font-size: .95rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 투네이션 디시 모니터링</h1>
+  <small>마지막 업데이트: {{ generated_at }}</small>
+</header>
+
+<div class="container">
+
+  <!-- 요약 카드 -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">총 수집 글</div>
+      <div class="value">{{ total_posts }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">관련 글</div>
+      <div class="value">{{ relevant_posts }}</div>
+    </div>
+    <div class="stat-card pos">
+      <div class="label">긍정</div>
+      <div class="value">{{ pos_count }}</div>
+    </div>
+    <div class="stat-card" style="--c:#e65100">
+      <div class="label">중립</div>
+      <div class="value">{{ neu_count }}</div>
+    </div>
+    <div class="stat-card neg">
+      <div class="label">부정</div>
+      <div class="value">{{ neg_count }}</div>
+    </div>
+  </div>
+
+  <!-- 갤러리별 요약 -->
+  <div class="gallery-stats">
+    <h2>갤러리별 통계</h2>
+    <table>
+      <thead>
+        <tr><th>갤러리</th><th>총</th><th>긍정</th><th>중립</th><th>부정</th></tr>
+      </thead>
+      <tbody>
+        {% for g in gallery_stats %}
+        <tr>
+          <td>{{ g.name }}</td>
+          <td>{{ g.total }}</td>
+          <td style="color:#2e7d32">{{ g.pos }}</td>
+          <td style="color:#555">{{ g.neu }}</td>
+          <td style="color:#c62828">{{ g.neg }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 필터 바 -->
+  <div class="filters">
+    <label>갤러리
+      <select id="f-gallery" onchange="applyFilters()">
+        <option value="">전체</option>
+        {% for g in gallery_stats %}
+        <option value="{{ g.id }}">{{ g.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>감정
+      <select id="f-sentiment" onchange="applyFilters()">
+        <option value="">전체</option>
+        <option value="긍정">긍정</option>
+        <option value="중립">중립</option>
+        <option value="부정">부정</option>
+      </select>
+    </label>
+    <label>관련성
+      <select id="f-relevant" onchange="applyFilters()">
+        <option value="">전체</option>
+        <option value="1" selected>관련글만</option>
+        <option value="0">오탐 포함</option>
+      </select>
+    </label>
+    <label>정렬
+      <select id="f-sort" onchange="applyFilters()">
+        <option value="date">최신순</option>
+        <option value="recommend">추천순</option>
+        <option value="views">조회순</option>
+        <option value="comments">댓글순</option>
+      </select>
+    </label>
+    <input type="text" id="f-keyword" placeholder="제목 검색..." oninput="applyFilters()">
+    <span class="filter-count" id="count-label"></span>
+  </div>
+
+  <!-- 글 카드 목록 -->
+  <div id="post-list">
+    {% if posts %}
+    {% for p in posts %}
+    <div class="post-card {% if p.is_relevant == 0 %}irrelevant{% endif %}"
+         data-gallery="{{ p.gallery_id }}"
+         data-sentiment="{{ p.sentiment or '' }}"
+         data-relevant="{{ p.is_relevant if p.is_relevant is not none else 1 }}"
+         data-recommend="{{ p.recommend_count or 0 }}"
+         data-views="{{ p.view_count or 0 }}"
+         data-comments="{{ p.comment_count or 0 }}"
+         data-date="{{ p.posted_at or '' }}"
+         data-title="{{ p.title | lower }}">
+
+      <div class="card-top">
+        <span class="sentiment-badge {{ p.sentiment or 'unknown' }}">
+          {{ p.sentiment or '미분류' }}
+        </span>
+        <div class="post-title">
+          <a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title }}</a>
+        </div>
+      </div>
+
+      <div class="card-meta">
+        <span>🏠 {{ p.gallery_name }}</span>
+        <span>✍️ {{ p.author }}</span>
+        <span>📅 {{ (p.posted_at or '')[:16] }}</span>
+        <span>👁 {{ p.view_count or 0 }}</span>
+        <span>👍 {{ p.recommend_count or 0 }}</span>
+        <span>💬 {{ p.comment_count or 0 }}</span>
+        <span>🔍 {{ p.matched_keyword }}</span>
+      </div>
+
+      {% if p.summary %}
+      <div class="post-summary">{{ p.summary }}</div>
+      {% endif %}
+
+      {% if p.topic_tags %}
+      <div class="tags">
+        {% for tag in p.topic_tags %}
+        <span class="tag">{{ tag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="no-posts">수집된 글이 없습니다. run.py를 실행해 주세요.</div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+const cards = Array.from(document.querySelectorAll('.post-card'));
+
+function applyFilters() {
+  const gallery = document.getElementById('f-gallery').value;
+  const sentiment = document.getElementById('f-sentiment').value;
+  const relevant = document.getElementById('f-relevant').value;
+  const keyword = document.getElementById('f-keyword').value.toLowerCase();
+  const sort = document.getElementById('f-sort').value;
+
+  let visible = cards.filter(c => {
+    if (gallery && c.dataset.gallery !== gallery) return false;
+    if (sentiment && c.dataset.sentiment !== sentiment) return false;
+    if (relevant !== '' && c.dataset.relevant !== relevant) return false;
+    if (keyword && !c.dataset.title.includes(keyword)) return false;
+    return true;
+  });
+
+  const sortFn = {
+    date:      (a, b) => b.dataset.date.localeCompare(a.dataset.date),
+    recommend: (a, b) => +b.dataset.recommend - +a.dataset.recommend,
+    views:     (a, b) => +b.dataset.views - +a.dataset.views,
+    comments:  (a, b) => +b.dataset.comments - +a.dataset.comments,
+  }[sort];
+  visible.sort(sortFn);
+
+  const list = document.getElementById('post-list');
+  cards.forEach(c => { c.classList.add('hidden'); list.appendChild(c); });
+  visible.forEach(c => c.classList.remove('hidden'));
+
+  document.getElementById('count-label').textContent = `${visible.length}개 표시`;
+}
+
+// 기본 필터 적용
+document.addEventListener('DOMContentLoaded', applyFilters);
+</script>
+</body>
+</html>
