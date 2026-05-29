@@ -13,9 +13,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, render_template_string, jsonify
+from flask import Flask, render_template_string, jsonify, request, redirect
+
 import db
-from config import GALLERIES
 
 app = Flask(__name__)
 
@@ -31,7 +31,8 @@ def index():
         db.init_db()
         posts = db.get_posts_for_dashboard()
         stats = db.get_stats()
-        galleries_map = {g["id"]: g["name"] for g in GALLERIES}
+        galleries = db.get_galleries()
+        galleries_map = {g["id"]: g["name"] for g in galleries}
 
         for p in posts:
             raw = p.get("topic_tags") or "[]"
@@ -44,7 +45,7 @@ def index():
             _load_template(),
             posts=posts,
             stats=stats,
-            galleries=GALLERIES,
+            galleries=galleries,
             galleries_map=galleries_map,
             generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
@@ -56,6 +57,27 @@ def index():
             + "</pre>",
             500,
         )
+
+
+@app.route("/gallery/add", methods=["POST"])
+def gallery_add():
+    db.init_db()
+    name = request.form.get("name", "")
+    url = request.form.get("url", "")
+    try:
+        db.add_gallery(name, url)
+    except Exception:
+        pass
+    return redirect("/")
+
+
+@app.route("/gallery/delete", methods=["POST"])
+def gallery_delete():
+    db.init_db()
+    gid = request.form.get("id", "")
+    if gid:
+        db.delete_gallery(gid)
+    return redirect("/")
 
 
 @app.route("/api/stats")

@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS galleries (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     base_url TEXT NOT NULL,
-    is_minor INTEGER DEFAULT 0
+    is_minor INTEGER DEFAULT 0,
+    board_type TEXT DEFAULT 'board'
 );
 CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY,
@@ -60,7 +61,8 @@ CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
 SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS galleries (
     id TEXT PRIMARY KEY, name TEXT NOT NULL,
-    base_url TEXT NOT NULL, is_minor INTEGER DEFAULT 0
+    base_url TEXT NOT NULL, is_minor INTEGER DEFAULT 0,
+    board_type TEXT DEFAULT 'board'
 );
 CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY, gallery_id TEXT, post_no INTEGER,
@@ -191,30 +193,113 @@ def init_db():
                 stmt = stmt.strip()
                 if stmt:
                     cur.execute(stmt)
+            # 기존 테이블에 board_type 컬럼이 없으면 추가 (마이그레이션)
+            try:
+                cur.execute("ALTER TABLE galleries ADD COLUMN IF NOT EXISTS board_type TEXT DEFAULT 'board'")
+            except Exception:
+                pass
         else:
             conn.executescript(SQLITE_SCHEMA)
+            try:
+                _execute(conn, "ALTER TABLE galleries ADD COLUMN board_type TEXT DEFAULT 'board'")
+            except Exception:
+                pass
         _seed_galleries(conn)
 
 
+def _board_path(board_type: str) -> str:
+    return {"mgallery": "mgallery/board", "mini": "mini/board"}.get(board_type, "board")
+
+
 def _seed_galleries(conn):
-    path_map = {"mgallery": "mgallery/board", "mini": "mini/board", "board": "board"}
+    """갤러리 테이블이 비어있을 때만 config 기본값을 넣는다 (UI 삭제분 부활 방지)."""
+    cur = _execute(conn, "SELECT COUNT(*) FROM galleries")
+    if cur.fetchone()[0] > 0:
+        return
     for g in GALLERIES:
         board_type = g.get("board_type", "board")
-        path = path_map.get(board_type, "board")
-        base_url = f"https://gall.dcinside.com/{path}/lists/?id={g['id']}"
+        base_url = f"https://gall.dcinside.com/{_board_path(board_type)}/lists/?id={g['id']}"
         is_minor = 1 if board_type in ("mgallery", "mini") else 0
         if _USE_PG:
             _execute(
                 conn,
-                "INSERT INTO galleries (id, name, base_url, is_minor) VALUES (?,?,?,?) ON CONFLICT DO NOTHING",
-                (g["id"], g["name"], base_url, is_minor),
+                "INSERT INTO galleries (id, name, base_url, is_minor, board_type) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
+                (g["id"], g["name"], base_url, is_minor, board_type),
             )
         else:
             _execute(
                 conn,
-                "INSERT OR IGNORE INTO galleries (id, name, base_url, is_minor) VALUES (?,?,?,?)",
-                (g["id"], g["name"], base_url, is_minor),
+                "INSERT OR IGNORE INTO galleries (id, name, base_url, is_minor, board_type) VALUES (?,?,?,?,?)",
+                (g["id"], g["name"], base_url, is_minor, board_type),
             )
+
+
+# ── 갤러리 관리 ───────────────────────────────────────────────────────────────
+def parse_gallery_url(url: str) -> dict:
+    """
+    디시 갤러리 URL에서 id와 종류를 추출.
+    예) https://gall.dcinside.com/mini/board/lists/?id=sparta_ → {id:'sparta_', board_type:'mini'}
+    """
+    import re
+    url = url.strip()
+    if "/mgallery/" in url:
+        board_type = "mgallery"
+    elif "/mini/" in url:
+        board_type = "mini"
+    else:
+        board_type = "board"
+    m = re.search(r"[?&]id=([A-Za-z0-9_]+)", url)
+    if not m:
+        # id= 가 없으면 URL 전체가 갤러리 ID라고 가정
+        m2 = re.search(r"([A-Za-z0-9_]+)\s*$", url)
+        gid = m2.group(1) if m2 else ""
+    else:
+        gid = m.group(1)
+    return {"id": gid, "board_type": board_type}
+
+
+def get_galleries() -> list[dict]:
+    with get_conn() as conn:
+        cur = _execute(conn, "SELECT id, name, base_url, is_minor, board_type FROM galleries ORDER BY name")
+        rows = _fetchall(cur)
+    for r in rows:
+        if not r.get("board_type"):
+            r["board_type"] = "board"
+    return rows
+
+
+def add_gallery(name: str, url: str) -> dict:
+    parsed = parse_gallery_url(url)
+    gid = parsed["id"]
+    board_type = parsed["board_type"]
+    if not gid:
+        raise ValueError("URL에서 갤러리 ID를 찾지 못했습니다.")
+    base_url = f"https://gall.dcinside.com/{_board_path(board_type)}/lists/?id={gid}"
+    is_minor = 1 if board_type in ("mgallery", "mini") else 0
+    name = name.strip() or gid
+    with get_conn() as conn:
+        if _USE_PG:
+            _execute(
+                conn,
+                """INSERT INTO galleries (id, name, base_url, is_minor, board_type)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,
+                     base_url=EXCLUDED.base_url, is_minor=EXCLUDED.is_minor,
+                     board_type=EXCLUDED.board_type""",
+                (gid, name, base_url, is_minor, board_type),
+            )
+        else:
+            _execute(
+                conn,
+                "INSERT OR REPLACE INTO galleries (id, name, base_url, is_minor, board_type) VALUES (?,?,?,?,?)",
+                (gid, name, base_url, is_minor, board_type),
+            )
+    return {"id": gid, "name": name, "board_type": board_type}
+
+
+def delete_gallery(gid: str):
+    with get_conn() as conn:
+        _execute(conn, "DELETE FROM galleries WHERE id=?", (gid,))
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
