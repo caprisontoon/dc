@@ -9,6 +9,13 @@ DB_PATH = DATA_DIR / "monitor.db"
 DATA_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+# Vercel 환경에서는 디렉토리 생성이 불필요하므로 무시
+try:
+    DATA_DIR.mkdir(exist_ok=True)
+    OUTPUT_DIR.mkdir(exist_ok=True)
+except Exception:
+    pass
+
 GALLERIES = [
     {
         "id": "stream",
