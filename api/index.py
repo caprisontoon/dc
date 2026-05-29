@@ -19,31 +19,43 @@ from config import GALLERIES
 
 app = Flask(__name__)
 
-TEMPLATE = open(Path(__file__).parent.parent / "templates" / "dashboard.html.j2").read()
+
+def _load_template() -> str:
+    path = Path(__file__).parent.parent / "templates" / "dashboard.html.j2"
+    return path.read_text(encoding="utf-8")
 
 
 @app.route("/")
 def index():
-    db.init_db()
-    posts = db.get_posts_for_dashboard()
-    stats = db.get_stats()
-    galleries_map = {g["id"]: g["name"] for g in GALLERIES}
+    try:
+        db.init_db()
+        posts = db.get_posts_for_dashboard()
+        stats = db.get_stats()
+        galleries_map = {g["id"]: g["name"] for g in GALLERIES}
 
-    for p in posts:
-        raw = p.get("topic_tags") or "[]"
-        try:
-            p["topic_tags_list"] = json.loads(raw)
-        except Exception:
-            p["topic_tags_list"] = []
+        for p in posts:
+            raw = p.get("topic_tags") or "[]"
+            try:
+                p["topic_tags_list"] = json.loads(raw)
+            except Exception:
+                p["topic_tags_list"] = []
 
-    return render_template_string(
-        TEMPLATE,
-        posts=posts,
-        stats=stats,
-        galleries=GALLERIES,
-        galleries_map=galleries_map,
-        generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    )
+        return render_template_string(
+            _load_template(),
+            posts=posts,
+            stats=stats,
+            galleries=GALLERIES,
+            galleries_map=galleries_map,
+            generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
+    except Exception as e:
+        import traceback
+        return (
+            "<h2>오류가 발생했습니다</h2><pre>"
+            + traceback.format_exc()
+            + "</pre>",
+            500,
+        )
 
 
 @app.route("/api/stats")
