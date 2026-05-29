@@ -15,29 +15,14 @@ except Exception:
 
 GALLERIES = [
     {
-        "id": "stream",
-        "name": "인터넷방송 마이너 갤러리",
-        "is_minor": True,
+        "id": "sparta_",
+        "name": "스파르타레이블 갤러리",
+        "board_type": "mini",      # 일반=board, 마이너=mgallery, 미니=mini
     },
     {
-        "id": "vyutuber",
-        "name": "버츄얼 유튜버 마이너 갤러리",
-        "is_minor": True,
-    },
-    {
-        "id": "twitch",
-        "name": "트위치 갤러리",
-        "is_minor": False,
-    },
-    {
-        "id": "africatv",
-        "name": "아프리카TV 갤러리",
-        "is_minor": False,
-    },
-    {
-        "id": "streamer",
-        "name": "스트리머 갤러리",
-        "is_minor": False,
+        "id": "ib_new2",
+        "name": "인터넷 방송 갤러리",
+        "board_type": "board",
     },
 ]
 
