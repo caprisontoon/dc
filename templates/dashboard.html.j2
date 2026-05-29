@@ -125,13 +125,26 @@
     <label>검색</label><br>
     <input type="text" id="search-text" placeholder="제목/요약 검색..." style="width:200px">
   </div>
-  <div style="margin-left:auto; align-self:flex-end;">
+  <div style="margin-left:auto; align-self:flex-end; display:flex; gap:8px;">
+    {% if is_local %}
+    <button type="button" id="btn-collect"
+      style="background:var(--pos); color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">
+      🔄 지금 수집하기
+    </button>
+    {% endif %}
     <button type="button" id="toggle-manage"
       style="background:var(--accent); color:#fff; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:13px;">
       ⚙ 갤러리 관리
     </button>
   </div>
 </div>
+
+{% if is_local %}
+<div id="collect-status" style="display:none; margin:0 24px 16px; background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px 16px;">
+  <div style="font-weight:600; margin-bottom:8px;">📡 수집 진행 상황</div>
+  <pre id="collect-log" style="margin:0; white-space:pre-wrap; color:#bbb; font-size:13px; line-height:1.6;"></pre>
+</div>
+{% endif %}
 
 <div id="manage-panel" style="display:none; margin:0 24px 16px; background:var(--card); border:1px solid var(--border); border-radius:8px; padding:16px;">
   <div style="font-weight:600; margin-bottom:10px;">📋 감시 중인 갤러리</div>
@@ -261,6 +274,47 @@ document.getElementById('toggle-manage').addEventListener('click', () => {
   const panel = document.getElementById('manage-panel');
   panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
 });
+
+const btnCollect = document.getElementById('btn-collect');
+if (btnCollect) {
+  let pollTimer = null;
+  const statusBox = document.getElementById('collect-status');
+  const logBox = document.getElementById('collect-log');
+
+  function poll() {
+    fetch('/collect/status').then(r => r.json()).then(s => {
+      logBox.textContent = (s.log || []).join('\n');
+      if (s.running) {
+        btnCollect.textContent = '⏳ 수집 중...';
+        btnCollect.disabled = true;
+      } else {
+        clearInterval(pollTimer);
+        btnCollect.textContent = '🔄 지금 수집하기';
+        btnCollect.disabled = false;
+        // 완료되면 5초 뒤 자동 새로고침
+        if ((s.log || []).some(l => l.includes('완료'))) {
+          setTimeout(() => location.reload(), 5000);
+        }
+      }
+    });
+  }
+
+  btnCollect.addEventListener('click', () => {
+    statusBox.style.display = 'block';
+    btnCollect.disabled = true;
+    btnCollect.textContent = '⏳ 시작 중...';
+    fetch('/collect', { method: 'POST' }).then(r => r.json()).then(res => {
+      if (!res.ok) {
+        logBox.textContent = '❌ ' + (res.error || '수집을 시작할 수 없습니다.');
+        btnCollect.disabled = false;
+        btnCollect.textContent = '🔄 지금 수집하기';
+        return;
+      }
+      pollTimer = setInterval(poll, 1500);
+      poll();
+    });
+  });
+}
 </script>
 </body>
 </html>
