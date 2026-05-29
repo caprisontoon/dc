@@ -6,10 +6,7 @@ DATA_DIR = BASE_DIR / "data"
 OUTPUT_DIR = BASE_DIR / "output"
 DB_PATH = DATA_DIR / "monitor.db"
 
-DATA_DIR.mkdir(exist_ok=True)
-OUTPUT_DIR.mkdir(exist_ok=True)
-
-# Vercel 환경에서는 디렉토리 생성이 불필요하므로 무시
+# Vercel은 읽기 전용 파일시스템이라 폴더 생성이 실패할 수 있음 → 무시
 try:
     DATA_DIR.mkdir(exist_ok=True)
     OUTPUT_DIR.mkdir(exist_ok=True)
