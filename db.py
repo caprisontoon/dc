@@ -90,7 +90,18 @@ def get_conn():
     if _USE_PG:
         import psycopg2
         import psycopg2.extras
-        conn = psycopg2.connect(DATABASE_URL)
+        # URL을 직접 파싱해서 명시적으로 연결 (psycopg2 URL 파싱 버그 우회)
+        from urllib.parse import urlparse
+        u = urlparse(DATABASE_URL)
+        conn = psycopg2.connect(
+            host=u.hostname,
+            port=u.port or 5432,
+            dbname=u.path.lstrip("/"),
+            user=u.username,
+            password=u.password,
+            sslmode="require",
+            connect_timeout=10,
+        )
         conn.autocommit = False
         try:
             yield conn
