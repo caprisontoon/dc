@@ -161,11 +161,12 @@ def collect_gallery(gallery: dict, session: requests.Session) -> list[dict]:
 
 
 def run_collector() -> list[dict]:
-    """전체 갤러리 순회하여 신규 글 목록 반환."""
+    """전체 갤러리 순회하여 신규 글 목록 반환. 갤러리 목록은 DB에서 읽는다."""
     db.init_db()
+    galleries = db.get_galleries() or GALLERIES
     session = requests.Session()
     all_posts = []
-    for gallery in GALLERIES:
+    for gallery in galleries:
         posts = collect_gallery(gallery, session)
         all_posts.extend(posts)
     return all_posts
