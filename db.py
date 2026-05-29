@@ -84,23 +84,50 @@ CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
 """
 
 
+def _parse_db_url(url: str) -> dict:
+    """
+    postgresql://USER:PASSWORD@HOST:PORT/DBNAME 를 안전하게 분해.
+    비밀번호에 @ : / 같은 특수문자가 있어도 동작하도록 수동 파싱.
+    또는 개별 환경변수(PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE)도 지원.
+    """
+    # 개별 환경변수가 모두 있으면 그것을 우선 사용 (가장 안전)
+    if os.getenv("PGHOST") and os.getenv("PGPASSWORD"):
+        return {
+            "host": os.getenv("PGHOST"),
+            "port": int(os.getenv("PGPORT", "5432")),
+            "user": os.getenv("PGUSER", "postgres"),
+            "password": os.getenv("PGPASSWORD"),
+            "dbname": os.getenv("PGDATABASE", "postgres"),
+        }
+
+    rest = url.split("://", 1)[1]                     # USER:PASS@HOST:PORT/DB
+    userinfo, hostpart = rest.rsplit("@", 1)          # 마지막 @ 기준 분리
+    user, password = userinfo.split(":", 1)           # 첫 : 기준 분리
+    if "/" in hostpart:
+        hostport, dbname = hostpart.split("/", 1)
+        dbname = dbname.split("?", 1)[0]              # 쿼리스트링 제거
+    else:
+        hostport, dbname = hostpart, "postgres"
+    if ":" in hostport:
+        host, port = hostport.rsplit(":", 1)
+        port = int(port)
+    else:
+        host, port = hostport, 5432
+    return {"host": host, "port": port, "user": user, "password": password, "dbname": dbname}
+
+
 # ── 연결 컨텍스트 매니저 ────────────────────────────────────────────────────
 @contextmanager
 def get_conn():
     if _USE_PG:
         import psycopg2
         import psycopg2.extras
-        # URL을 직접 파싱해서 명시적으로 연결 (psycopg2 URL 파싱 버그 우회)
-        from urllib.parse import urlparse
-        u = urlparse(DATABASE_URL)
+        # 비밀번호에 특수문자(@, : 등)가 있어도 안전하게 파싱
+        params = _parse_db_url(DATABASE_URL)
         conn = psycopg2.connect(
-            host=u.hostname,
-            port=u.port or 5432,
-            dbname=u.path.lstrip("/"),
-            user=u.username,
-            password=u.password,
             sslmode="require",
             connect_timeout=10,
+            **params,
         )
         conn.autocommit = False
         try:
