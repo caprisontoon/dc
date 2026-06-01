@@ -212,26 +212,36 @@ def _board_path(board_type: str) -> str:
 
 
 def _seed_galleries(conn):
-    """갤러리 테이블이 비어있을 때만 config 기본값을 넣는다 (UI 삭제분 부활 방지)."""
-    cur = _execute(conn, "SELECT COUNT(*) FROM galleries")
-    if cur.fetchone()[0] > 0:
-        return
+    """config의 갤러리를 INSERT(없으면) + board_type/base_url 교정(있으면).
+    UI에서 삭제한 갤러리는 되살리지 않는다."""
+    cur = _execute(conn, "SELECT id FROM galleries")
+    existing_ids = {r[0] if not isinstance(r, dict) else r["id"] for r in cur.fetchall()}
+
     for g in GALLERIES:
         board_type = g.get("board_type", "board")
         base_url = f"https://gall.dcinside.com/{_board_path(board_type)}/lists/?id={g['id']}"
         is_minor = 1 if board_type in ("mgallery", "mini") else 0
-        if _USE_PG:
+
+        if g["id"] in existing_ids:
+            # board_type이 잘못 저장된 경우를 교정한다
             _execute(
                 conn,
-                "INSERT INTO galleries (id, name, base_url, is_minor, board_type) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
-                (g["id"], g["name"], base_url, is_minor, board_type),
+                "UPDATE galleries SET board_type=?, base_url=?, is_minor=? WHERE id=?",
+                (board_type, base_url, is_minor, g["id"]),
             )
         else:
-            _execute(
-                conn,
-                "INSERT OR IGNORE INTO galleries (id, name, base_url, is_minor, board_type) VALUES (?,?,?,?,?)",
-                (g["id"], g["name"], base_url, is_minor, board_type),
-            )
+            if _USE_PG:
+                _execute(
+                    conn,
+                    "INSERT INTO galleries (id, name, base_url, is_minor, board_type) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
+                    (g["id"], g["name"], base_url, is_minor, board_type),
+                )
+            else:
+                _execute(
+                    conn,
+                    "INSERT OR IGNORE INTO galleries (id, name, base_url, is_minor, board_type) VALUES (?,?,?,?,?)",
+                    (g["id"], g["name"], base_url, is_minor, board_type),
+                )
 
 
 # ── 갤러리 관리 ───────────────────────────────────────────────────────────────
